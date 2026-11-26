@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+:root {
+  --green: #0f8f5f;
+  --green-dark: #0b6d49;
+  --orange: #ff5a2a;
+  --cream: #eef3fb;
+  --ink: #101828;
+  --card: #ffffff;
+  --line: #e4ebf5;
+}
+
+@theme inline {
+  --color-green: var(--green);
+  --color-green-dark: var(--green-dark);
+  --color-orange: var(--orange);
+  --color-cream: var(--cream);
+  --color-ink: var(--ink);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --font-sans: var(--font-outfit);
+}
+
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--font-outfit), sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+@keyframes pos-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pos-pop {
+  0% {
+    transform: scale(0.86);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pos-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pos-sheet {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pos-enter {
+  animation: pos-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pos-card {
+  animation: pos-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pos-pop {
+  animation: pos-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pos-overlay {
+  animation: pos-fade 0.2s ease both;
+}
+
+.pos-sheet {
+  animation: pos-sheet 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-enter,
+  .pos-card,
+  .pos-pop,
+  .pos-overlay,
+  .pos-sheet {
+    animation: none;
+  }
+}
+
+@media print {
+  body {
+    background: white;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .receipt-sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  .pos-enter,
+  .pos-card,
+  .pos-pop,
+  .pos-overlay,
+  .pos-sheet {
+    animation: none !important;
+  }
+}

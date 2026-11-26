@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  CASHIER
+  MANAGER
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+}
+
+enum OrderStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+}
+
+model Staff {
+  id        String    @id @default(cuid())
+  name      String
+  pinHash   String
+  role      StaffRole @default(CASHIER)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  orders    Order[]
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  sortOrder Int        @default(0)
+  items     MenuItem[]
+}
+
+model MenuItem {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  name       String
+  pricePaise Int
+  isVeg      Boolean  @default(true)
+  available  Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model DiningTable {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  seats     Int     @default(4)
+  sortOrder Int     @default(0)
+  orders    Order[]
+}
+
+model OrderCounter {
+  id   Int @id
+  last Int @default(100)
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  orderNumber   Int         @unique
+  type          OrderType
+  status        OrderStatus @default(OPEN)
+  tableId       String?
+  table         DiningTable? @relation(fields: [tableId], references: [id])
+  staffId       String?
+  staff         Staff?      @relation(fields: [staffId], references: [id])
+  note          String?
+  subtotalPaise Int
+  cgstPaise     Int
+  sgstPaise     Int
+  totalPaise    Int
+  items         OrderItem[]
+  payments      Payment[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  paidAt        DateTime?
+
+  @@index([status, createdAt])
+  @@index([tableId])
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId     String?
+  name           String
+  isVeg          Boolean
+  unitPricePaise Int
+  quantity       Int
+  lineTotalPaise Int
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  orderId       String
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method        PaymentMethod
+  amountPaise   Int
+  tenderedPaise Int?
+  createdAt     DateTime      @default(now())
+}

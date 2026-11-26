@@ -1,0 +1,50 @@
+import bcrypt from "bcryptjs";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { sessionCookieOptions, signSession } from "@/lib/auth";
+
+const bodySchema = z.object({
+  pin: z.string().regex(/^\d{4}$/, "Enter the 4-digit PIN."),
+});
+
+export async function POST(request: Request) {
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Enter the 4-digit PIN." }, { status: 400 });
+  }
+
+  let staff;
+  try {
+    staff = await prisma.staff.findMany({ where: { active: true } });
+  } catch {
+    return NextResponse.json(
+      { error: "The database is not connected yet. Add the Supabase URL to .env and run npm run db:setup." },
+      { status: 503 },
+    );
+  }
+
+  let match: (typeof staff)[number] | null = null;
+  for (const person of staff) {
+    if (await bcrypt.compare(parsed.data.pin, person.pinHash)) {
+      match = person;
+      break;
+    }
+  }
+
+  if (!match) {
+    return NextResponse.json({ error: "That PIN is not recognised." }, { status: 401 });
+  }
+
+  const token = await signSession({
+    id: match.id,
+    name: match.name,
+    role: match.role,
+  });
+
+  const response = NextResponse.json({
+    staff: { id: match.id, name: match.name, role: match.role },
+  });
+  response.cookies.set(sessionCookieOptions(token));
+  return response;
+}
