@@ -5,7 +5,7 @@ export function PrintButton() {
     <button
       type="button"
       onClick={() => window.print()}
-      className="no-print h-11 rounded-xl bg-green px-4 font-semibold text-white"
+      className="no-print h-11 rounded-[6px] bg-green px-4 font-semibold text-white"
     >
       Print
     </button>

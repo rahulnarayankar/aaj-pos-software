@@ -41,7 +41,7 @@ export function PosShell({ children }: { children: React.ReactNode }) {
     <button
       type="button"
       onClick={logout}
-      className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+      className="shrink-0 rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
     >
       Sign out
     </button>
@@ -61,14 +61,14 @@ export function PosShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2 lg:hidden">{signOut}</div>
-          <nav className="col-span-2 grid grid-cols-3 gap-1 rounded-2xl bg-slate-100/90 p-1 lg:col-span-1 lg:flex lg:justify-self-center lg:rounded-full">
+          <nav className="col-span-2 grid grid-cols-3 gap-1 rounded-[6px] bg-slate-100/90 p-1 lg:col-span-1 lg:flex lg:justify-self-center">
             {links.map((link) => {
               const active = pathname === link.href;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-full px-2 py-2 text-center text-sm font-medium transition duration-200 lg:px-3.5 lg:py-1.5 ${active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                  className={`rounded-[6px] px-2 py-2 text-center text-sm font-medium transition duration-200 lg:px-3.5 lg:py-1.5 ${active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
                   {link.label}
                 </Link>
@@ -76,7 +76,7 @@ export function PosShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
           <div className="hidden items-center justify-self-end gap-2 lg:flex">
-            <span className="max-w-40 truncate rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600">
+            <span className="max-w-40 truncate rounded-[6px] bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600">
               {name}
             </span>
             {signOut}

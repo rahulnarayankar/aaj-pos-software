@@ -10,6 +10,9 @@ export async function GET(_request: Request, context: Context) {
   if (!staff) return response;
 
   const { id } = await context.params;
+  if (!id || id.length > 64) {
+    return NextResponse.json({ error: "Bill not found." }, { status: 404 });
+  }
   try {
     const order = await prisma.order.findUnique({
       where: { id },

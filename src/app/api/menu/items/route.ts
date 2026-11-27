@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { errorMessage, requireStaff } from "@/lib/http";
+import { dietIsVeg, diets } from "@/lib/diet";
+import { errorMessage, requireManager, requireStaff } from "@/lib/http";
 import { rupeesToPaise } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
   name: z.string().trim().min(1).max(80),
   categoryId: z.string().min(1),
-  priceRupees: z.number().positive(),
-  isVeg: z.boolean(),
+  priceRupees: z.number().positive().max(100000),
+  diet: z.enum(diets),
 });
 
 export async function GET() {
@@ -23,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { staff, response } = await requireStaff();
+  const { staff, response } = await requireManager();
   if (!staff) return response;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
@@ -43,7 +44,8 @@ export async function POST(request: Request) {
         categoryId: category.id,
         name: parsed.data.name.trim(),
         pricePaise: rupeesToPaise(parsed.data.priceRupees),
-        isVeg: parsed.data.isVeg,
+        diet: parsed.data.diet,
+        isVeg: dietIsVeg(parsed.data.diet),
       },
     });
     return NextResponse.json({ item });

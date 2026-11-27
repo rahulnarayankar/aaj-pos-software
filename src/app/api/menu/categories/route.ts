@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { errorMessage, requireStaff } from "@/lib/http";
+import { errorMessage, requireManager } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
@@ -8,7 +8,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const { staff, response } = await requireStaff();
+  const { staff, response } = await requireManager();
   if (!staff) return response;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));

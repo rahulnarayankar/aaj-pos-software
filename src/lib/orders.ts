@@ -1,6 +1,6 @@
 import type { OrderType, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { splitGst } from "@/lib/tax";
+import { billTotals } from "@/lib/tax";
 
 export type CartLineInput = {
   menuItemId: string;
@@ -21,6 +21,7 @@ export async function saveOrder(input: {
   type: OrderType;
   tableId?: string | null;
   note?: string | null;
+  discountPercent?: number;
   staffId: string;
   items: CartLineInput[];
   pay?: { method: PaymentMethod; tenderedPaise?: number };
@@ -51,15 +52,21 @@ export async function saveOrder(input: {
     return {
       menuItemId: item.id,
       name: item.name,
-      isVeg: item.isVeg,
+      diet: item.diet,
+      isVeg: item.diet !== "NON_VEG",
       unitPricePaise: item.pricePaise,
       quantity: line.quantity,
       lineTotalPaise: item.pricePaise * line.quantity,
     };
   });
 
+  const discountPercent = input.discountPercent ?? 0;
+  if (!Number.isInteger(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+    throw new Error("Discount must be a whole percent from 0 to 100.");
+  }
+
   const subtotalPaise = lines.reduce((sum, line) => sum + line.lineTotalPaise, 0);
-  const tax = splitGst(subtotalPaise);
+  const tax = billTotals(subtotalPaise, discountPercent);
 
   if (
     input.pay?.method === "CASH" &&
@@ -91,6 +98,8 @@ export async function saveOrder(input: {
       note: input.note?.trim() || null,
       staffId: input.staffId,
       subtotalPaise,
+      discountPercent: tax.percent,
+      discountPaise: tax.discount,
       cgstPaise: tax.cgst,
       sgstPaise: tax.sgst,
       totalPaise: tax.total,

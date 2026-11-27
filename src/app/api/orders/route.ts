@@ -9,6 +9,7 @@ const bodySchema = z.object({
   type: z.enum(["DINE_IN", "TAKEAWAY"]),
   tableId: z.string().min(1).nullable().optional(),
   note: z.string().max(200).optional(),
+  discountPercent: z.number().int().min(0).max(100).optional(),
   items: z
     .array(
       z.object({
@@ -35,10 +36,16 @@ export async function GET() {
       OR: [{ createdAt: { gte: startOfTodayIndia() } }, { status: "OPEN" }],
     },
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    include: {
-      table: true,
-      items: true,
-      payments: true,
+    select: {
+      id: true,
+      orderNumber: true,
+      type: true,
+      status: true,
+      totalPaise: true,
+      createdAt: true,
+      table: { select: { name: true } },
+      items: { select: { quantity: true } },
+      payments: { select: { method: true } },
     },
   });
 

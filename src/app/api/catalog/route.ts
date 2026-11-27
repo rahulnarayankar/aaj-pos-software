@@ -13,6 +13,7 @@ export async function GET() {
         items: {
           where: { available: true },
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: { id: true, name: true, pricePaise: true, diet: true },
         },
       },
     }),

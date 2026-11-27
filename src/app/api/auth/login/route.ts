@@ -1,16 +1,26 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { sessionCookieOptions, signSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { clearAttempts, clientKey, recordFailure, tooManyAttempts } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   pin: z.string().regex(/^\d{4}$/, "Enter the 4-digit PIN."),
 });
 
 export async function POST(request: Request) {
+  const key = clientKey(request);
+  if (tooManyAttempts(key)) {
+    return NextResponse.json(
+      { error: "Too many tries. Wait 15 minutes and try again." },
+      { status: 429 },
+    );
+  }
+
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
+    recordFailure(key);
     return NextResponse.json({ error: "Enter the 4-digit PIN." }, { status: 400 });
   }
 
@@ -33,8 +43,11 @@ export async function POST(request: Request) {
   }
 
   if (!match) {
+    recordFailure(key);
     return NextResponse.json({ error: "That PIN is not recognised." }, { status: 401 });
   }
+
+  clearAttempts(key);
 
   const token = await signSession({
     id: match.id,

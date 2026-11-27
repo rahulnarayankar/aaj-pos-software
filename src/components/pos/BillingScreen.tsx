@@ -2,15 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { Bone, CounterSkeleton } from "@/components/pos/Skeleton";
 import { VegMark } from "@/components/pos/VegMark";
+import { loadCatalog as fetchCatalog, peekCatalog } from "@/lib/catalog-client";
+import { dietOptions, dietShort, type Diet } from "@/lib/diet";
 import { formatRupees } from "@/lib/money";
-import { splitGst } from "@/lib/tax";
+import { billTotals } from "@/lib/tax";
 
 type MenuItem = {
   id: string;
   name: string;
   pricePaise: number;
-  isVeg: boolean;
+  diet: Diet;
 };
 
 type Category = {
@@ -35,10 +38,11 @@ type OrderPayload = {
   status: string;
   tableId: string | null;
   note: string | null;
+  discountPercent: number;
   items: {
     menuItemId: string | null;
     name: string;
-    isVeg: boolean;
+    diet: Diet;
     unitPricePaise: number;
     quantity: number;
   }[];
@@ -50,16 +54,22 @@ const paymentMethods = [
   { id: "CARD", label: "Card" },
 ] as const;
 
+const discountOptions = [5, 10, 15, 20];
+
 export function BillingScreen({ initialOrderId }: { initialOrderId: string | null }) {
   const router = useRouter();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [tables, setTables] = useState<Table[]>([]);
+  const cachedCatalog = peekCatalog<{ categories: Category[]; tables: Table[] }>();
+  const [categories, setCategories] = useState<Category[]>(cachedCatalog?.categories ?? []);
+  const [tables, setTables] = useState<Table[]>(cachedCatalog?.tables ?? []);
+  const [catalogReady, setCatalogReady] = useState(Boolean(cachedCatalog));
   const [categoryId, setCategoryId] = useState<string>("all");
+  const [dietFilter, setDietFilter] = useState<"ALL" | Diet>("ALL");
   const [search, setSearch] = useState("");
   const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY">("DINE_IN");
   const [tableId, setTableId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [note, setNote] = useState("");
+  const [discountPercent, setDiscountPercent] = useState(0);
   const [openOrderId, setOpenOrderId] = useState<string | null>(initialOrderId);
   const [openNumber, setOpenNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,25 +79,25 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
   const [method, setMethod] = useState<(typeof paymentMethods)[number]["id"]>("CASH");
   const [tendered, setTendered] = useState("");
 
-  async function loadCatalog() {
-    const response = await fetch("/api/catalog");
-    if (!response.ok) return;
-    const data = (await response.json()) as { categories: Category[]; tables: Table[] };
+  async function loadCatalog(force = false) {
+    const data = await fetchCatalog<{ categories: Category[]; tables: Table[] }>(force);
+    if (!data) return;
     setCategories(data.categories);
     setTables(data.tables);
+    setCatalogReady(true);
   }
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/catalog")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { categories: Category[]; tables: Table[] } | null) => {
-        if (!cancelled && data) {
-          setCategories(data.categories);
-          setTables(data.tables);
-        }
-      })
-      .catch(() => undefined);
+    fetchCatalog<{ categories: Category[]; tables: Table[] }>().then((data) => {
+      if (cancelled || !data) {
+        if (!cancelled) setCatalogReady(true);
+        return;
+      }
+      setCategories(data.categories);
+      setTables(data.tables);
+      setCatalogReady(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -113,13 +123,14 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
         setOrderType(order.type);
         setTableId(order.tableId);
         setNote(order.note ?? "");
+        setDiscountPercent(order.discountPercent ?? 0);
         setCart(
           order.items
             .filter((item) => item.menuItemId)
             .map((item) => ({
               id: item.menuItemId!,
               name: item.name,
-              isVeg: item.isVeg,
+              diet: item.diet,
               pricePaise: item.unitPricePaise,
               quantity: item.quantity,
             })),
@@ -138,11 +149,12 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
     return categories
       .filter((category) => categoryId === "all" || category.id === categoryId)
       .flatMap((category) => category.items)
+      .filter((item) => dietFilter === "ALL" || item.diet === dietFilter)
       .filter((item) => item.name.toLowerCase().includes(query));
-  }, [categories, categoryId, search]);
+  }, [categories, categoryId, dietFilter, search]);
 
   const subtotal = cart.reduce((sum, line) => sum + line.pricePaise * line.quantity, 0);
-  const tax = splitGst(subtotal);
+  const tax = billTotals(subtotal, discountPercent);
   const selectedTable = tables.find((table) => table.id === tableId) ?? null;
 
   function addItem(item: MenuItem) {
@@ -181,6 +193,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
   function resetBill() {
     setCart([]);
     setNote("");
+    setDiscountPercent(0);
     setOpenOrderId(null);
     setOpenNumber(null);
     setTableId(null);
@@ -200,6 +213,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
         type: orderType,
         tableId: orderType === "DINE_IN" ? tableId : null,
         note,
+        discountPercent,
         items: cart.map((line) => ({ menuItemId: line.id, quantity: line.quantity })),
         pay,
       }),
@@ -222,11 +236,12 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
     );
     setCart([]);
     setNote("");
+    setDiscountPercent(0);
     setOpenOrderId(null);
     setOpenNumber(null);
     setTableId(null);
     setBusy(false);
-    await loadCatalog();
+    await loadCatalog(true);
     if (initialOrderId) router.replace("/pos");
   }
 
@@ -259,25 +274,56 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
             className="h-12 flex-1 rounded-2xl border border-line bg-white px-4 shadow-sm outline-none transition focus:border-[#2f6bff] focus:ring-4 focus:ring-[#2f6bff]/15"
           />
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setCategoryId("all")}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition duration-200 ${categoryId === "all" ? "bg-[#2f6bff] text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-          >
-            All
-          </button>
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              onClick={() => setCategoryId(category.id)}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition duration-200 ${categoryId === category.id ? "bg-[#2f6bff] text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-            >
-              {category.name}
-            </button>
-          ))}
+        <div className="mt-3 flex flex-wrap gap-2" aria-busy={!catalogReady}>
+          {!catalogReady
+            ? Array.from({ length: 4 }, (_, index) => <Bone key={index} className="h-9 w-20 rounded-[6px]" />)
+            : null}
+          {catalogReady ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setCategoryId("all")}
+                className={`shrink-0 rounded-[6px] px-4 py-2 text-sm font-medium transition duration-200 ${categoryId === "all" ? "bg-[#2f6bff] text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                All
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => setCategoryId(category.id)}
+                  className={`shrink-0 rounded-[6px] px-4 py-2 text-sm font-medium transition duration-200 ${categoryId === category.id ? "bg-[#2f6bff] text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </>
+          ) : null}
         </div>
+        {catalogReady ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDietFilter("ALL")}
+              className={`shrink-0 rounded-[6px] px-4 py-2 text-sm font-medium transition duration-200 ${dietFilter === "ALL" ? "bg-[#6a45ef] text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+            >
+              All diets
+            </button>
+            {dietOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setDietFilter(option.id)}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-[6px] px-4 py-2 text-sm font-medium transition duration-200 ${dietFilter === option.id ? "bg-[#6a45ef] text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                <VegMark diet={option.id} />
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {!catalogReady ? <CounterSkeleton /> : null}
+        {catalogReady ? (
         <div className="mt-4 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {visibleItems.map((item, index) => {
             const inCart = cart.find((line) => line.id === item.id);
@@ -287,14 +333,17 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
                 type="button"
                 onClick={() => addItem(item)}
                 style={{ animationDelay: `${Math.min(index, 14) * 35}ms` }}
-                className="pos-card flex min-h-28 flex-col items-start rounded-3xl border border-white bg-white p-3 text-left shadow-[0_8px_24px_rgba(16,24,40,0.05)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_16px_32px_rgba(47,107,255,0.14)] active:scale-[0.98]"
+                className="pos-card flex min-h-28 flex-col items-start rounded-[6px] border border-white bg-white p-3 text-left shadow-[0_8px_24px_rgba(16,24,40,0.05)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_16px_32px_rgba(47,107,255,0.14)] active:scale-[0.98]"
               >
-                <VegMark veg={item.isVeg} />
+                <span className="inline-flex items-center gap-1.5">
+                  <VegMark diet={item.diet} />
+                  <span className="text-[11px] font-medium text-ink/55">{dietShort(item.diet)}</span>
+                </span>
                 <span className="mt-2 font-medium leading-snug break-words">{item.name}</span>
                 <span className="mt-auto flex flex-wrap items-center gap-2 pt-3 text-sm font-semibold text-[#2f6bff]">
                   {formatRupees(item.pricePaise)}
                   {inCart ? (
-                    <span key={inCart.quantity} className="pos-pop rounded-full bg-[#2f6bff]/10 px-2 py-0.5 text-xs text-[#2f6bff]">
+                    <span key={inCart.quantity} className="pos-pop rounded-[6px] bg-[#2f6bff]/10 px-2 py-0.5 text-xs text-[#2f6bff]">
                       × {inCart.quantity}
                     </span>
                   ) : null}
@@ -303,7 +352,8 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
             );
           })}
         </div>
-        {visibleItems.length === 0 ? (
+        ) : null}
+        {catalogReady && visibleItems.length === 0 ? (
           <p className="mt-8 text-sm text-ink/60">No dishes match. Add items from the Menu tab after the database is seeded.</p>
         ) : null}
       </section>
@@ -312,23 +362,30 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
         <div className="border-b border-line p-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">{openNumber ? `Bill #${openNumber}` : "New bill"}</h2>
-            <button type="button" onClick={resetBill} className="rounded-full px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-100">
+            <button type="button" onClick={resetBill} className="rounded-[6px] px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-100">
               Clear
             </button>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
+          <div className="mt-3 grid grid-cols-2 gap-1 rounded-[6px] bg-slate-100 p-1">
             {(["DINE_IN", "TAKEAWAY"] as const).map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setOrderType(type)}
-                className={`h-10 rounded-xl text-sm font-semibold transition duration-200 ${orderType === type ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
+                className={`h-10 rounded-[6px] text-sm font-semibold transition duration-200 ${orderType === type ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
               >
                 {type === "DINE_IN" ? "Dine-in" : "Takeaway"}
               </button>
             ))}
           </div>
-          {orderType === "DINE_IN" ? (
+          {orderType === "DINE_IN" && !catalogReady ? (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-hidden>
+              {Array.from({ length: 8 }, (_, index) => (
+                <Bone key={index} className="h-12 rounded-[6px]" />
+              ))}
+            </div>
+          ) : null}
+          {orderType === "DINE_IN" && catalogReady ? (
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {tables.map((table) => {
                 const open = table.orders[0];
@@ -338,7 +395,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
                     key={table.id}
                     type="button"
                     onClick={() => chooseTable(table)}
-                    className={`rounded-2xl border px-2 py-2 text-sm font-semibold transition duration-200 active:scale-95 ${selected ? "border-[#2f6bff] bg-[#2f6bff] text-white shadow-sm" : open ? "border-orange/30 bg-orange/10 text-orange" : "border-line bg-slate-50 hover:border-[#2f6bff]/40"}`}
+                    className={`rounded-[6px] border px-2 py-2 text-sm font-semibold transition duration-200 active:scale-95 ${selected ? "border-[#2f6bff] bg-[#2f6bff] text-white shadow-sm" : open ? "border-orange/30 bg-orange/10 text-orange" : "border-line bg-slate-50 hover:border-[#2f6bff]/40"}`}
                   >
                     {table.name}
                     <span className="block text-[10px] font-medium opacity-80">
@@ -357,21 +414,28 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
           ) : (
             <ul className="space-y-2 py-3">
               {cart.map((line) => (
-                <li key={line.id} className="pos-card flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-slate-50 px-3 py-2.5">
-                  <div className="min-w-0 flex-1 basis-36">
-                    <p className="font-medium break-words">{line.name}</p>
-                    <p className="text-sm text-ink/60">{formatRupees(line.pricePaise)}</p>
+                <li key={line.id} className="pos-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-[6px] bg-slate-50 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 font-medium break-words">
+                      <VegMark diet={line.diet} />
+                      <span>{line.name}</span>
+                    </p>
+                    <p className="text-sm text-ink/60 tabular-nums">{formatRupees(line.pricePaise)}</p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button type="button" onClick={() => setQuantity(line.id, line.quantity - 1)} className="h-8 w-8 rounded-full bg-white shadow-sm transition active:scale-90">
-                      −
-                    </button>
-                    <span key={line.quantity} className="pos-pop w-6 text-center font-semibold">{line.quantity}</span>
-                    <button type="button" onClick={() => setQuantity(line.id, line.quantity + 1)} className="h-8 w-8 rounded-full bg-white shadow-sm transition active:scale-90">
-                      +
-                    </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <p className="text-sm font-semibold whitespace-nowrap tabular-nums">
+                      {formatRupees(line.pricePaise * line.quantity)}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setQuantity(line.id, line.quantity - 1)} className="h-8 w-8 rounded-[6px] bg-white shadow-sm transition active:scale-90">
+                        −
+                      </button>
+                      <span key={line.quantity} className="pos-pop min-w-6 text-center font-semibold tabular-nums">{line.quantity}</span>
+                      <button type="button" onClick={() => setQuantity(line.id, line.quantity + 1)} className="h-8 w-8 rounded-[6px] bg-white shadow-sm transition active:scale-90">
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <p className="ml-auto shrink-0 text-right text-sm font-semibold">{formatRupees(line.pricePaise * line.quantity)}</p>
                 </li>
               ))}
             </ul>
@@ -386,8 +450,52 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
             maxLength={200}
             className="mb-3 h-11 w-full rounded-2xl border border-line bg-slate-50 px-3 text-sm outline-none transition focus:border-[#2f6bff] focus:bg-white focus:ring-4 focus:ring-[#2f6bff]/15"
           />
+          <div className="mb-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium">Discount</span>
+              <label className="flex items-center gap-1 text-sm text-ink/70">
+                <input
+                  inputMode="numeric"
+                  aria-label="Discount percent"
+                  value={discountPercent === 0 ? "" : String(discountPercent)}
+                  placeholder="0"
+                  onChange={(event) => {
+                    const digits = event.target.value.replace(/\D/g, "").slice(0, 3);
+                    setDiscountPercent(digits === "" ? 0 : Math.min(100, Number(digits)));
+                  }}
+                  className="h-9 w-14 rounded-xl border border-line bg-white px-2 text-right tabular-nums outline-none transition focus:border-[#2f6bff] focus:ring-4 focus:ring-[#2f6bff]/15"
+                />
+                %
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setDiscountPercent(0)}
+                className={`rounded-[6px] px-3 py-1.5 text-sm font-medium transition ${discountPercent === 0 ? "bg-[#6a45ef] text-white" : "bg-slate-100 text-slate-600"}`}
+              >
+                None
+              </button>
+              {discountOptions.map((percent) => (
+                <button
+                  key={percent}
+                  type="button"
+                  onClick={() => setDiscountPercent(percent)}
+                  className={`rounded-[6px] px-3 py-1.5 text-sm font-medium transition ${discountPercent === percent ? "bg-[#6a45ef] text-white" : "bg-slate-100 text-slate-600"}`}
+                >
+                  {percent}%
+                </button>
+              ))}
+            </div>
+          </div>
           <dl className="space-y-1 text-sm">
             <div className="flex justify-between"><dt>Subtotal</dt><dd>{formatRupees(subtotal)}</dd></div>
+            {tax.discount > 0 ? (
+              <div className="flex justify-between text-[#0f8f5f]">
+                <dt>Discount {tax.percent}%</dt>
+                <dd>−{formatRupees(tax.discount)}</dd>
+              </div>
+            ) : null}
             <div className="flex justify-between text-ink/70"><dt>CGST 2.5%</dt><dd>{formatRupees(tax.cgst)}</dd></div>
             <div className="flex justify-between text-ink/70"><dt>SGST 2.5%</dt><dd>{formatRupees(tax.sgst)}</dd></div>
             <div className="flex justify-between text-base font-semibold"><dt>Total</dt><dd>{formatRupees(tax.total)}</dd></div>
@@ -399,7 +507,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
               type="button"
               disabled={busy || cart.length === 0}
               onClick={() => submit()}
-              className="h-12 rounded-2xl border border-slate-200 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+              className="h-12 rounded-[6px] border border-slate-200 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
             >
               {openOrderId ? "Update bill" : "Park bill"}
             </button>
@@ -407,7 +515,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
               type="button"
               disabled={busy || cart.length === 0}
               onClick={openPayment}
-              className="h-12 rounded-2xl bg-gradient-to-r from-[#2f6bff] to-[#6a45ef] font-semibold text-white shadow-[0_10px_24px_rgba(47,107,255,0.28)] transition hover:brightness-105 active:scale-[0.98] disabled:opacity-40"
+              className="h-12 rounded-[6px] bg-gradient-to-r from-[#2f6bff] to-[#6a45ef] font-semibold text-white shadow-[0_10px_24px_rgba(47,107,255,0.28)] transition hover:brightness-105 active:scale-[0.98] disabled:opacity-40"
             >
               Take payment
             </button>
@@ -430,7 +538,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
                   key={option.id}
                   type="button"
                   onClick={() => setMethod(option.id)}
-                  className={`h-11 rounded-xl font-semibold transition duration-200 ${method === option.id ? "bg-[#2f6bff] text-white shadow-sm" : "bg-slate-100 text-slate-600"}`}
+                  className={`h-11 rounded-[6px] font-semibold transition duration-200 ${method === option.id ? "bg-[#2f6bff] text-white shadow-sm" : "bg-slate-100 text-slate-600"}`}
                 >
                   {option.label}
                 </button>
@@ -451,7 +559,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
               </label>
             ) : null}
             <div className="mt-5 grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setPaying(false)} className="h-12 rounded-2xl bg-slate-100 font-semibold transition hover:bg-slate-200">
+              <button type="button" onClick={() => setPaying(false)} className="h-12 rounded-[6px] bg-slate-100 font-semibold transition hover:bg-slate-200">
                 Back
               </button>
               <button
@@ -463,7 +571,7 @@ export function BillingScreen({ initialOrderId }: { initialOrderId: string | nul
                     tenderedPaise: method === "CASH" ? tenderedPaise : undefined,
                   })
                 }
-                className="h-12 rounded-2xl bg-gradient-to-r from-[#18b955] to-[#0f9a62] font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-40"
+                className="h-12 rounded-[6px] bg-gradient-to-r from-[#18b955] to-[#0f9a62] font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-40"
               >
                 {busy ? "Saving…" : "Confirm"}
               </button>

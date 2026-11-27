@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BillListSkeleton } from "@/components/pos/Skeleton";
 import { formatRupees } from "@/lib/money";
 
 type OrderRow = {
@@ -19,15 +20,25 @@ type OrderRow = {
 export function OrdersScreen() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     fetch("/api/orders")
       .then(async (response) => {
         const data = (await response.json()) as { orders?: OrderRow[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not load bills.");
-        setOrders(data.orders ?? []);
+        if (!cancelled) setOrders(data.orders ?? []);
       })
-      .catch((loadError: Error) => setError(loadError.message));
+      .catch((loadError: Error) => {
+        if (!cancelled) setError(loadError.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function typeLabel(order: OrderRow) {
@@ -39,6 +50,10 @@ export function OrdersScreen() {
     if (order.status === "PAID") return order.payments[0]?.method ?? "Paid";
     return "Cancelled";
   }
+
+  const counted = orders.filter((order) => order.status !== "CANCELLED");
+  const orderCount = counted.length;
+  const amountPaise = counted.reduce((sum, order) => sum + order.totalPaise, 0);
 
   function action(order: OrderRow) {
     if (order.status === "OPEN") {
@@ -60,14 +75,15 @@ export function OrdersScreen() {
       <h1 className="text-2xl font-semibold">Today&apos;s bills</h1>
       <p className="mt-1 text-sm text-ink/60">Open bills from earlier days stay in this list until they are paid.</p>
       {error ? <p className="mt-4 text-sm text-red-800">{error}</p> : null}
-      {orders.length === 0 && !error ? (
-        <p className="mt-4 rounded-3xl bg-white px-4 py-8 text-sm text-ink/50 shadow-[0_16px_50px_rgba(47,84,180,0.08)]">
+      {loading ? <BillListSkeleton /> : null}
+      {!loading && orders.length === 0 && !error ? (
+        <p className="mt-4 rounded-[6px] bg-white px-4 py-8 text-sm text-ink/50 shadow-[0_16px_50px_rgba(47,84,180,0.08)]">
           No bills yet today.
         </p>
       ) : null}
       <ul className="mt-4 space-y-3 md:hidden">
         {orders.map((order) => (
-          <li key={order.id} className="rounded-3xl bg-white p-4 shadow-[0_16px_50px_rgba(47,84,180,0.08)]">
+          <li key={order.id} className="rounded-[6px] bg-white p-4 shadow-[0_16px_50px_rgba(47,84,180,0.08)]">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-semibold">#{order.orderNumber}</p>
@@ -84,7 +100,13 @@ export function OrdersScreen() {
           </li>
         ))}
       </ul>
-      <div className="mt-4 hidden overflow-x-auto rounded-3xl border border-white bg-white shadow-[0_16px_50px_rgba(47,84,180,0.08)] md:block">
+      {!loading && orderCount > 0 ? (
+        <div className="mt-3 flex items-center justify-between rounded-[6px] bg-white px-4 py-3 text-sm font-semibold shadow-[0_16px_50px_rgba(47,84,180,0.08)] md:hidden">
+          <span>{orderCount} {orderCount === 1 ? "order" : "orders"}</span>
+          <span className="tabular-nums">{formatRupees(amountPaise)}</span>
+        </div>
+      ) : null}
+      <div className="mt-4 hidden overflow-x-auto rounded-[6px] border border-white bg-white shadow-[0_16px_50px_rgba(47,84,180,0.08)] md:block">
         <table className="w-full min-w-[40rem] text-left text-sm">
           <thead className="bg-slate-50 text-ink/70">
             <tr>
@@ -110,6 +132,17 @@ export function OrdersScreen() {
               </tr>
             ))}
           </tbody>
+          {orderCount > 0 ? (
+            <tfoot>
+              <tr className="border-t border-line bg-slate-50 font-semibold">
+                <td className="px-4 py-3" colSpan={3}>
+                  {orderCount} {orderCount === 1 ? "order" : "orders"}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatRupees(amountPaise)}</td>
+                <td className="px-4 py-3" colSpan={2} />
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
       </div>
     </div>

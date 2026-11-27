@@ -12,4 +12,11 @@ export function splitGst(subtotalPaise: number) {
   };
 }
 
+export function billTotals(subtotalPaise: number, discountPercent: number) {
+  const percent = Math.min(100, Math.max(0, Math.trunc(discountPercent)));
+  const discount = Math.min(subtotalPaise, Math.round((subtotalPaise * percent) / 100));
+  const taxable = subtotalPaise - discount;
+  return { percent, discount, taxable, ...splitGst(taxable) };
+}
+
 export const GST_LABEL = "5%";

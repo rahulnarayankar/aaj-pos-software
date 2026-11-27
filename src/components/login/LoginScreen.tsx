@@ -78,7 +78,7 @@ export function LoginScreen() {
   }
 
   const digitKey =
-    "grid h-12 place-items-center rounded-xl bg-[#2f6bff] text-xl font-semibold text-white shadow-sm active:translate-y-px sm:h-14";
+    "grid h-12 place-items-center rounded-[6px] bg-[#2f6bff] text-xl font-semibold text-white shadow-sm active:translate-y-px sm:h-14";
 
   return (
     <main className="relative flex min-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto bg-[#eef3fb] px-4 py-6">
@@ -113,7 +113,7 @@ export function LoginScreen() {
               <button
                 type="submit"
                 disabled={pin.length !== 4 || busy}
-                className="h-11 shrink-0 rounded-full bg-[#2fce62] px-5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                className="h-11 shrink-0 rounded-[6px] bg-[#2fce62] px-5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
               >
                 {busy ? "…" : "Login"}
               </button>
@@ -148,7 +148,7 @@ export function LoginScreen() {
               <button
                 type="button"
                 onClick={clearPin}
-                className="grid h-12 place-items-center rounded-xl bg-[#f04444] text-sm font-semibold text-white shadow-sm active:translate-y-px sm:h-14"
+                className="grid h-12 place-items-center rounded-[6px] bg-[#f04444] text-sm font-semibold text-white shadow-sm active:translate-y-px sm:h-14"
               >
                 CLEAR
               </button>
