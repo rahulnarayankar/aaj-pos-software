@@ -2,6 +2,8 @@
 
 Counter billing for the restaurant: dine-in tables, takeaway, 5% GST, discounts, and cash, UPI, or card.
 
+Live counter: https://aaj-restaurant-pos.netlify.app/
+
 This app uses its own Supabase Postgres database (`aaj-restaurant-pos`).
 
 ## Setup

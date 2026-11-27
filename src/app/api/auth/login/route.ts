@@ -28,8 +28,13 @@ export async function POST(request: Request) {
   try {
     staff = await prisma.staff.findMany({ where: { active: true } });
   } catch {
+    const missing = !process.env.DATABASE_URL;
     return NextResponse.json(
-      { error: "The database is not connected yet. Add the Supabase URL to .env and run npm run db:setup." },
+      {
+        error: missing
+          ? "DATABASE_URL is not set on this server."
+          : "The database could not be reached. Check the Supabase connection string.",
+      },
       { status: 503 },
     );
   }
