@@ -2,7 +2,7 @@
 
 Counter billing for the restaurant: dine-in tables, takeaway, 5% GST, discounts, and cash, UPI, or card.
 
-This app uses its own Supabase Postgres database (`aaj-restaurant-pos`). It does not share data with the Aaj Bites storefront.
+This app uses its own Supabase Postgres database (`aaj-restaurant-pos`).
 
 ## Setup
 
